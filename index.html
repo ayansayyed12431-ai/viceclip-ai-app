@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#080808">
+  <title>VICECLIP AI</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 22px;
+      background: #080808;
+      color: white;
+      font-family: Arial, sans-serif;
+    }
+    header { text-align: center; margin: 25px 0 35px; }
+    h1 { font-size: 32px; letter-spacing: 3px; margin-bottom: 8px; }
+    h1 span { color: #a5ff00; }
+    .sub { color: #999; font-size: 13px; }
+    .card {
+      background: #151515;
+      border: 1px solid #292929;
+      border-radius: 16px;
+      padding: 18px;
+      margin-bottom: 18px;
+    }
+    h2 { font-size: 17px; margin-top: 0; }
+    input[type="file"] {
+      width: 100%;
+      color: #aaa;
+      margin: 12px 0;
+    }
+    video {
+      width: 100%;
+      border-radius: 12px;
+      margin-top: 12px;
+      background: black;
+    }
+    label { display: block; color: #bbb; margin: 15px 0 7px; }
+    input[type="number"] {
+      width: 100%;
+      padding: 12px;
+      background: #222;
+      color: white;
+      border: 1px solid #444;
+      border-radius: 8px;
+    }
+    button, .download {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      margin-top: 15px;
+      border: 0;
+      border-radius: 10px;
+      background: #a5ff00;
+      color: black;
+      font-size: 15px;
+      font-weight: bold;
+      text-align: center;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    button:disabled { opacity: .5; }
+    .muted { color: #999; font-size: 12px; line-height: 1.5; }
+    #status { color: #a5ff00; margin-top: 12px; font-size: 13px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>VICECLIP <span>AI</span></h1>
+  <div class="sub">YOUR SHORT VIDEO WORKSPACE</div>
+</header>
+
+<section class="card">
+  <h2>Upload your video</h2>
+  <input id="videoFile" type="file" accept="video/*">
+  <video id="preview" controls playsinline></video>
+  <p class="muted">Choose a video from your device to preview it.</p>
+</section>
+
+<section class="card">
+  <h2>Create a clip</h2>
+
+  <label for="start">Start time (seconds)</label>
+  <input id="start" type="number" min="0" value="0">
+
+  <label for="end">End time (seconds)</label>
+  <input id="end" type="number" min="1" value="15">
+
+  <button id="create">Create clip</button>
+  <div id="status"></div>
+  <a id="download" class="download" hidden>Download clip</a>
+  <p class="muted">Clip export depends on your browser's video recording support. This starter version does not include automatic AI highlight detection.</p>
+</section>
+
+<section class="card">
+  <h2>Coming next</h2>
+  <p class="muted">• AI highlight detection</p>
+  <p class="muted">• Automatic captions</p>
+  <p class="muted">• Multiple short clips</p>
+  <p class="muted">• Cloud processing</p>
+</section>
+
+<script>
+const fileInput = document.getElementById("videoFile");
+const video = document.getElementById("preview");
+const startInput = document.getElementById("start");
+const endInput = document.getElementById("end");
+const statusText = document.getElementById("status");
+const downloadLink = document.getElementById("download");
+let videoUrl = null;
+
+fileInput.addEventListener("change", () => {
+  const file = fileInput.files[0];
+  if (!file) return;
+
+  if (videoUrl) URL.revokeObjectURL(videoUrl);
+  videoUrl = URL.createObjectURL(file);
+  video.src = videoUrl;
+  downloadLink.hidden = true;
+  statusText.textContent = "Video ready.";
+});
+
+document.getElementById("create").addEventListener("click", async () => {
+  if (!video.src) {
+    statusText.textContent = "Please upload a video first.";
+    return;
+  }
+
+  if (!window.MediaRecorder) {
+    statusText.textContent = "Your browser does not support clip recording.";
+    return;
+  }
+
+  const start = Number(startInput.value);
+  const end = Number(endInput.value);
+
+  if (start < 0 || end <= start || end > video.duration) {
+    statusText.textContent = "Enter valid start and end times.";
+    return;
+  }
+
+  statusText.textContent = "Preparing clip...";
+  downloadLink.hidden = true;
+
+  try {
+    video.pause();
+    video.currentTime = start;
+
+    await new Promise((resolve, reject) => {
+      video.addEventListener("seeked", resolve, { once: true });
+      video.addEventListener("error", reject, { once: true });
+    });
+
+    const stream = video.captureStream();
+    const chunks = [];
+    const recorder = new MediaRecorder(stream);
+
+    recorder.ondataavailable = event => {
+      if (event.data.size) chunks.push(event.data);
+    };
+
+    recorder.onstop = () => {
+      const blob = new Blob(chunks, { type: recorder.mimeType });
+      const clipUrl = URL.createObjectURL(blob);
+      downloadLink.href = clipUrl;
+      downloadLink.download = "viceclip.webm";
+      downloadLink.textContent = "Download your clip";
+      downloadLink.hidden = false;
+      statusText.textContent = "Clip created!";
+      video.pause();
+    };
+
+    recorder.start();
+    video.play();
+
+    const stopRecording = () => {
+      if (recorder.state === "recording") recorder.stop();
+      video.removeEventListener("timeupdate", checkTime);
+    };
+
+    const checkTime = () => {
+      if (video.currentTime >= end) stopRecording();
+    };
+
+    video.addEventListener("timeupdate", checkTime);
+    video.addEventListener("ended", stopRecording, { once: true });
+
+  } catch (error) {
+    statusText.textContent = "Could not create clip in this browser.";
+  }
+});
+</script>
+
+</body>
+</html>
